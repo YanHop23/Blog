@@ -9,3 +9,5 @@
 /backend/.env
 .idea/
 /backend/node_modules
+/backend/.prettierrc
+/backend/ .prettierignore
