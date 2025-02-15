@@ -1,11 +1,17 @@
 import express from 'express';
-import jwt from 'jsonwebtoken';
+import multer from 'multer';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
-import { registerValidation } from './validations/auth.js';
-import { validationResult } from 'express-validator';
-import User from './models/User.js';
-import bcrypt from 'bcrypt';
+import { userController, postController } from './controllers/index.js';
+import {
+    loginValidation,
+    postCreateValidation,
+    registerValidation,
+} from './validations/validations.js';
+import {
+    handleValidationsErrors,
+    authMiddleware,
+} from './middlewares/index.js';
 
 const app = express();
 dotenv.config();
@@ -15,79 +21,56 @@ mongoose
     .then(() => console.log('MongoDB Connected'))
     .catch((err) => console.log('MongoDB Error', err));
 
+const storage = multer.diskStorage({
+    destination: (_, __, cb) => {
+        cb(null, './uploads/');
+    },
+    filename: (_, file, cb) => {
+        cb(null, file.originalname);
+    },
+});
+
+const upload = multer({ storage });
+
 app.use(express.json());
+app.use('/upload', express.static('uploads'));
 app.get('/', (req, res) => {
     res.send('Hello World!');
 });
 
-app.post('/auth/login', async (req, res) => {
-    try {
-        const user = await User.findOne({ email: req.body.email });
-        if (!user) {
-            return res.status(404).json({
-                message: 'User Not Found',
-            });
-        }
-        const validPassword = await bcrypt.compare(
-            req.body.password,
-            user._doc.passwordHash
-        );
-        if (!validPassword) {
-            return res.status(404).json({
-                message: 'Invalid email or password',
-            });
-        }
-        const token = jwt.sign(
-            {
-                _id: user._id,
-            },
-            'secret111',
-            {
-                expiresIn: '24h',
-            }
-        );
-        const { passwordHash, ...userData } = user._doc;
-        res.json({ userData, token });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: 'Не вдалося авторизуватися' });
-    }
+app.post('/upload', authMiddleware, upload.single('image'), (req, res) => {
+    res.json({
+        url: `/upload/${req.file.filename}`,
+    });
 });
 
-app.post('/auth/register', registerValidation, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json(errors.array());
-        }
-        const password = req.body.password;
-        //Алгоритм шифрування
-        const salt = await bcrypt.genSalt(10);
-        const hash = await bcrypt.hash(password, salt);
-        const doc = new User({
-            email: req.body.email,
-            passwordHash: hash,
-            fullName: req.body.fullName,
-            avatarUrl: req.body.avatarUrl,
-        });
-        const user = await doc.save();
+app.get('/auth/me', authMiddleware, userController.checkMe);
 
-        const token = jwt.sign(
-            {
-                _id: user._id,
-            },
-            'secret111',
-            {
-                expiresIn: '24h',
-            }
-        );
-        const { passwordHash, ...userData } = user._doc;
-        res.json({ userData, token });
-    } catch (error) {
-        console.log(error);
-        res.status(500).json({ message: 'Не вдалося зареєструватися' });
-    }
-});
+app.post(
+    '/auth/login',
+    loginValidation,
+    handleValidationsErrors,
+    userController.login
+);
+
+app.post(
+    '/auth/register',
+    registerValidation,
+    handleValidationsErrors,
+    userController.register
+);
+
+app.post(
+    '/posts',
+    authMiddleware,
+    postCreateValidation,
+    postController.createPost
+);
+
+app.get('/posts/:id', postController.getOne);
+app.get('/posts', postController.getAll);
+app.delete('/posts/:id', authMiddleware, postController.deletePost);
+app.patch('/posts/:id', authMiddleware, postController.updatePost);
 
 app.listen(4444, (error) => {
     if (error) {
