@@ -10,4 +10,4 @@
 .idea/
 /backend/node_modules
 /backend/.prettierrc
-/backend/ .prettierignore
+/backend/.prettierignore
