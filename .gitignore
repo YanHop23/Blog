@@ -11,3 +11,4 @@
 /backend/node_modules
 /backend/.prettierrc
 /backend/.prettierignore
+/frontend/node_modules
